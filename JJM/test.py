@@ -206,6 +206,7 @@ def _districts(driver, current_dir):
 
 
 def recur_scrape(current_dir):
+    # recur_scarape
     try:
         os.makedirs(current_dir, exist_ok=True)
     except PermissionError:
