@@ -1,133 +1,211 @@
+import os
+import re
 from time import sleep
-import logging
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import StaleElementReferenceException, TimeoutException, WebDriverException, \
-    NoSuchElementException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException, WebDriverException
+import json
 
-logging.basicConfig(level=logging.INFO)
+WORKING_DIR = r'D:\jjm'  # Ensure this is the absolute path to avoid issues in IDE
+STATE_NAME = 'Maharashtra'
 
-def select_option_with_js(driver, dropdown_id, option_text):
-    try:
-        select_script = f"""
-        var dropdown = document.getElementById("{dropdown_id}");
-        for (var i = 0; i < dropdown.options.length; i++) {{
-            if (dropdown.options[i].text === "{option_text}") {{
-                dropdown.selectedIndex = i;
-                dropdown.dispatchEvent(new Event('change', {{bubbles: true}}));
-                break;
-            }}
-        }}
-        """
-        driver.execute_script(select_script)
-        logging.info(f"Selected option '{option_text}' from dropdown '{dropdown_id}' using JavaScript")
-    except Exception as e:
-        logging.error(f"Error selecting option with JavaScript: {e}")
 
-def select_option(driver, dropdown_id, text=None):
-    try:
-        if text is not None:
-            dropdown = driver.find_element(By.ID, dropdown_id)
-            select = Select(dropdown)
-            select.select_by_visible_text(text)
-            logging.info(f"Selected by visible text: {text}")
+def save_html_from_element(driver, element_id, file_path):
+    max_retries = 3
+    retries = 0
+    while retries < max_retries:
+        try:
+            data_div = driver.find_element(By.ID, element_id)
+            html = data_div.get_attribute("outerHTML")
+            with open(file_path, 'w', encoding='utf8') as f:
+                f.write(html)
             return
-    except StaleElementReferenceException:
-        logging.warning("Stale element reference encountered. Retrying...")
-        # Re-fetch the dropdown element and retry the operation
-        select_option(driver, dropdown_id, text)
-    except Exception as e:
-        logging.error(f"Error selecting option: {e}")
+        except StaleElementReferenceException as e:
+            print(f"StaleElementReferenceException: {e}")
+            print("Retrying...")
+            retries += 1
+            sleep(2)
+            driver.refresh()
+    print(f"Failed to save HTML from element with ID {element_id} after {max_retries}")
 
-def select_dropdown(driver, wait, dropdown_id, text=None):
-    dropdown = wait.until(EC.presence_of_element_located((By.ID, dropdown_id)))
-    select = Select(dropdown)
-    select_option_with_js(driver, dropdown_id, text)
 
-def process_village_data(driver):
-    try:
-        show_button = driver.find_element(By.ID, "CPHPage_btnShow")
-        show_button.click()
-        logging.info("Clicked show button")
-        habitation_link_clicked = click_habitation_link(driver)
-        if habitation_link_clicked:
-            logging.info("Clicked on habitation link")
-    except Exception as e:
-        logging.error(f"Error processing village data: {e}")
+def find_elements(driver, selector_type, selector):
+    selector_type = selector_type.lower()
+
+    if selector_type == 'css':
+        elements = driver.find_elements(By.CSS_SELECTOR, selector)
+    elif selector_type == 'xpath':
+        elements = driver.find_elements(By.XPATH, selector)
+    elif selector_type == 'id':
+        elements = driver.find_elements(By.ID, selector)
+    elif selector_type == 'name':
+        elements = driver.find_elements(By.NAME, selector)
+    elif selector_type == 'class':
+        elements = driver.find_elements(By.CLASS_NAME, selector)
+    elif selector_type == 'tag':
+        elements = driver.find_elements(By.TAG_NAME, selector)
+    elif selector_type == 'link_text':
+        elements = driver.find_elements(By.LINK_TEXT, selector)
+    elif selector_type == 'partial_link_text':
+        elements = driver.find_elements(By.PARTIAL_LINK_TEXT, selector)
+    else:
+        raise ValueError(f"Unsupported selector type: {selector_type}")
+
+    return elements
+
+
+def click_option(driver, xpath, value):
+    max_retries = 3
+    retries = 0
+    while retries < max_retries:
+        try:
+            option = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, xpath.format(value))))
+            driver.execute_script("arguments[0].scrollIntoView(true);", option)
+            WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, xpath.format(value))))
+            option.click()
+            return
+        except (StaleElementReferenceException, TimeoutException, WebDriverException) as e:
+            print(f"Error clicking option {value}: {e}")
+            print(f"XPath of the element: {xpath.format(value)}")
+            print("Retrying...")
+            retries += 1
+            sleep(5)
+            driver.refresh()
+
+
+def strip_whitespace(string):
+    return string.strip()
+
+
+def format_option_text(text):
+    return text.replace("'", "\\'")
+
 
 def click_habitation_link(driver):
     try:
         link = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, 'CPHPage_lblHab')))
         link.click()
-        return True
     except TimeoutException:
-        logging.warning("Habitation link not found. Trying again...")
+        print("Habitation link not found. Trying again...")
         driver.refresh()
+        sleep(2)
         return False
+    return True
 
-def main():
-    options = FirefoxOptions()
-    options.headless = True  # Run browser in headless mode
-    driver = None
-    try:
-        driver = webdriver.Firefox(options=options)
-        driver.maximize_window()
-        wait = WebDriverWait(driver, 20)
 
-        driver.get("https://ejalshakti.gov.in/JJM/JJM/Public/Profile/VillageProfile.aspx")
-        sleep(5)
+def create_directory_if_not_exists(directory):
+    # directory = re.sub(r'[<>:"/\\|?*]', '', directory)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
-        # Example for selecting state by visible text
-        state_text = "Maharashtra"  # Corrected the state name
-        select_dropdown(wait, "CPHPage_ddState", text=state_text)
 
-        district_dropdown_id = "CPHPage_ddDistrict"
-        district_dropdown = wait.until(EC.presence_of_element_located((By.ID, district_dropdown_id)))
-        district_select = Select(district_dropdown)
+def write_json(obj, filepath, ensure_ascii=False):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, "w", encoding="utf8", errors='ignore') as f:
+        json.dump(obj, f, indent=True, ensure_ascii=ensure_ascii)
+
+
+def _villages(driver, panchayat_dir):
+    village_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddVillage")]//option')[1:]
+    village_names = [vil.text.strip() for vil in village_elements]
+    for index, vil_text in enumerate(village_names):
+        village_dir = os.path.join(panchayat_dir, vil_text)
+        create_directory_if_not_exists(village_dir)
+        write_json(village_names, os.path.join(village_dir, 'vil.json'))
+
+        formatted_vil = format_option_text(vil_text)
+        xpath = '//*[contains(@id, "CPHPage_ddVillage")]/option[normalize-space(text())="{}"]'
+        click_option(driver, xpath, formatted_vil)
+        sleep(1)
+        print("village_name", index, vil_text)
+
+        driver.find_element(By.ID, 'CPHPage_btnShow').click()
         sleep(3)
 
-        for district_option in district_select.options[1:]:
-            district_text = district_option.text.strip()
-            logging.info(f"Attempting to select district: {district_text}")
-            select_dropdown(wait, district_dropdown_id, text=district_text)
-            sleep(3)
+        if not click_habitation_link(driver):
+            return
 
-            block_dropdown_id = "CPHPage_ddBlock"
-            block_dropdown = wait.until(EC.presence_of_element_located((By.ID, block_dropdown_id)))
-            block_select = Select(block_dropdown)
+        file_name = os.path.join(village_dir, f'{vil_text}.html')
+        save_html_from_element(driver, 'CPHPage_divgrid', file_name)
 
-            for block_option in block_select.options[1:]:
-                block_text = block_option.text.strip()
-                logging.info(f"Attempting to select block: {block_text}")
-                select_dropdown(wait, block_dropdown_id, text=block_text)
 
-                panchayat_dropdown_id = "CPHPage_ddPanchayat"
-                panchayat_dropdown = wait.until(EC.presence_of_element_located((By.ID, panchayat_dropdown_id)))
-                panchayat_select = Select(panchayat_dropdown)
+def _panchayats(driver, block_dir):
+    panchayat_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddPanchayat")]//option')[68:]
+    panchayat_names = [panc.text.strip() for panc in panchayat_elements]
 
-                for panchayat_option in panchayat_select.options[1:]:
-                    panchayat_text = panchayat_option.text.strip()
-                    logging.info(f"Attempting to select panchayat: {panchayat_text}")
-                    try:
-                        select_dropdown(wait, panchayat_dropdown_id, text=panchayat_text)
+    for index, panc_text in enumerate(panchayat_names):
+        panchayat_dir = os.path.join(block_dir, str(panc_text))
+        create_directory_if_not_exists(panchayat_dir)
+        write_json(panchayat_names, os.path.join(panchayat_dir, 'panchayat.json'))
 
-                        # Added sleep interval to wait for villages to load
-                        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "CPHPage_ddVillage")))
-                        process_village_data(driver)
-                    except NoSuchElementException:
-                        logging.warning(f"No panchayat option found: {panchayat_text}. Skipping...")
-                        continue
+        formatted_panc = format_option_text(panc_text)
+        xpath = '//*[contains(@id, "CPHPage_ddPanchayat")]/option[normalize-space(text())="{}"]'
+        click_option(driver, xpath, formatted_panc)
+        sleep(5)
+        print("panchayat_name", index, panc_text)
 
-    except Exception as e:
-        logging.error(f"Error in main function: {e}")
-    finally:
-        if driver:
-            driver.quit()
-            logging.info("Driver quit")
+        _villages(driver, panchayat_dir)
 
-if __name__ == "__main__":
-    main()
+
+def _blocks(driver, district_dir):
+    block_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddBlock")]//option')[3:]
+    block_names = [blk.text.strip() for blk in block_elements]
+    for blk_text in block_names:
+        block_dir = os.path.join(district_dir, str(blk_text))
+        create_directory_if_not_exists(block_dir)
+        write_json(block_names, os.path.join(block_dir, 'block.json'))
+
+        click_option(driver, '//*[contains(@id, "CPHPage_ddBlock")]/option[text()="{}"]'.format(blk_text), blk_text)
+        print(blk_text)
+        sleep(2)
+
+        _panchayats(driver, block_dir)
+
+
+def _districts(driver, current_dir):
+    state = find_elements(driver, 'xpath', '//*[contains(@id, "CPHPage_ddState")]')[0].text.split('\n')[21:22]
+    for item in state:
+        item = strip_whitespace(item)
+        write_json([state], os.path.join(current_dir, 'state.json'))
+
+        click_option(driver, '//*[contains(@id, "CPHPage_ddState")]/option[text()="{}"]'.format(item), item)
+        sleep(3)
+        print(item)
+
+        district_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddDistrict")]//option')[20:]
+        district_names = [dist.text.strip() for dist in district_elements]
+        for dist_text in district_names:
+            district_dir = os.path.join(current_dir, str(dist_text))
+            create_directory_if_not_exists(district_dir)
+            write_json(district_names, os.path.join(district_dir, 'district.json'))
+
+            click_option(driver, '//*[contains(@id, "CPHPage_ddDistrict")]/option[text()="{}"]'.format(dist_text),
+                         dist_text)
+            sleep(2)
+            print(dist_text)
+
+            _blocks(driver, district_dir)
+
+
+def recur_scrape(current_dir):
+    try:
+        os.makedirs(current_dir, exist_ok=True)
+    except PermissionError:
+        print("Permission denied: Unable to create directories.")
+        return
+    options = FirefoxOptions()
+    driver = webdriver.Firefox(options=options)
+    driver.get("https://ejalshakti.gov.in/JJM/JJM/Public/Profile/VillageProfile.aspx")
+    sleep(5)
+    driver.maximize_window()
+
+    _districts(driver, current_dir)
+    driver.quit()
+
+
+if __name__ == '__main__':
+    current_dir = os.path.join(WORKING_DIR, STATE_NAME)
+    recur_scrape(current_dir)

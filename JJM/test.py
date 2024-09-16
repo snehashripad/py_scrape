@@ -1,7 +1,6 @@
 import os
 import re
 from time import sleep
-import srsly
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -10,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException, WebDriverException
 import json
 
-WORKING_DIR = fr'D:\jjm'
+WORKING_DIR = r'D:\jjm'  # Ensure this is the absolute path to avoid issues in IDE
 STATE_NAME = 'Maharashtra'
 
 
@@ -85,12 +84,6 @@ def format_option_text(text):
     return text.replace("'", "\\'")
 
 
-def iterate_with_enumerate(items):
-    for index, value in enumerate(items):
-        # Do something with i and j here
-        print(f"Index: {index}, Value: {value}")
-
-
 def click_habitation_link(driver):
     try:
         link = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, 'CPHPage_lblHab')))
@@ -104,7 +97,7 @@ def click_habitation_link(driver):
 
 
 def create_directory_if_not_exists(directory):
-    directory = re.sub(r'[<>:"/\\|?*]', '', directory)
+    # directory = re.sub(r'[<>:"/\\|?*]', '', directory)
     if not os.path.exists(directory):
         os.makedirs(directory)
 
@@ -119,10 +112,9 @@ def _villages(driver, panchayat_dir):
     village_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddVillage")]//option')[1:]
     village_names = [vil.text.strip() for vil in village_elements]
     for index, vil_text in enumerate(village_names):
-
         village_dir = os.path.join(panchayat_dir, vil_text)
         create_directory_if_not_exists(village_dir)
-        write_json(village_names, fr'{village_dir}\vil.json')
+        write_json(village_names, os.path.join(village_dir, 'vil.json'))
 
         formatted_vil = format_option_text(vil_text)
         xpath = '//*[contains(@id, "CPHPage_ddVillage")]/option[normalize-space(text())="{}"]'
@@ -130,27 +122,24 @@ def _villages(driver, panchayat_dir):
         sleep(1)
         print("village_name", index, vil_text)
 
-        driver.find_elements(By.ID, 'CPHPage_btnShow')[0].click()
+        driver.find_element(By.ID, 'CPHPage_btnShow').click()
         sleep(3)
 
         if not click_habitation_link(driver):
             return
 
-        file_name = fr'{village_dir}\{vil_text}.html'
+        file_name = os.path.join(village_dir, f'{vil_text}.html')
         save_html_from_element(driver, 'CPHPage_divgrid', file_name)
 
 
 def _panchayats(driver, block_dir):
-    # panchayat_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddPanchayat")]')[0].text.split(
-    #     '\n')[26:]
-    panchayat_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddPanchayat")]//option')[47:]
+    panchayat_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddPanchayat")]//option')[17:]
     panchayat_names = [panc.text.strip() for panc in panchayat_elements]
 
     for index, panc_text in enumerate(panchayat_names):
-        # directory
         panchayat_dir = os.path.join(block_dir, str(panc_text))
         create_directory_if_not_exists(panchayat_dir)
-        write_json(panchayat_names, fr'{panchayat_dir}\panchayat.json')
+        write_json(panchayat_names, os.path.join(panchayat_dir, 'panchayat.json'))
 
         formatted_panc = format_option_text(panc_text)
         xpath = '//*[contains(@id, "CPHPage_ddPanchayat")]/option[normalize-space(text())="{}"]'
@@ -162,13 +151,12 @@ def _panchayats(driver, block_dir):
 
 
 def _blocks(driver, district_dir):
-    # block_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddBlock")]')[0].text.split('\n')[3:]
-    block_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddBlock")]//option')[3:]
+    block_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddBlock")]//option')[1:]
     block_names = [blk.text.strip() for blk in block_elements]
     for blk_text in block_names:
         block_dir = os.path.join(district_dir, str(blk_text))
         create_directory_if_not_exists(block_dir)
-        write_json(block_names, fr'{block_dir}\block.json')
+        write_json(block_names, os.path.join(block_dir, 'block.json'))
 
         click_option(driver, '//*[contains(@id, "CPHPage_ddBlock")]/option[text()="{}"]'.format(blk_text), blk_text)
         print(blk_text)
@@ -181,21 +169,18 @@ def _districts(driver, current_dir):
     state = find_elements(driver, 'xpath', '//*[contains(@id, "CPHPage_ddState")]')[0].text.split('\n')[21:22]
     for item in state:
         item = strip_whitespace(item)
-        list1 = [state]
-        write_json(list1, fr'{current_dir}\state.json')
+        write_json([state], os.path.join(current_dir, 'state.json'))
 
         click_option(driver, '//*[contains(@id, "CPHPage_ddState")]/option[text()="{}"]'.format(item), item)
         sleep(3)
         print(item)
 
-        # district_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddDistrict")]//option')[0].text.split(
-        # Git
-        district_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddDistrict")]//option')[19:]
+        district_elements = driver.find_elements(By.XPATH, '//*[contains(@id, "CPHPage_ddDistrict")]//option')[21:]
         district_names = [dist.text.strip() for dist in district_elements]
         for dist_text in district_names:
             district_dir = os.path.join(current_dir, str(dist_text))
             create_directory_if_not_exists(district_dir)
-            write_json(district_names, fr'{district_dir}\district.json')
+            write_json(district_names, os.path.join(district_dir, 'district.json'))
 
             click_option(driver, '//*[contains(@id, "CPHPage_ddDistrict")]/option[text()="{}"]'.format(dist_text),
                          dist_text)
@@ -206,16 +191,14 @@ def _districts(driver, current_dir):
 
 
 def recur_scrape(current_dir):
-    # recur_scarape
     try:
         os.makedirs(current_dir, exist_ok=True)
     except PermissionError:
         print("Permission denied: Unable to create directories.")
         return
     options = FirefoxOptions()
-    # options.add_argument("--headles
     driver = webdriver.Firefox(options=options)
-    driver.get(rf"https://ejalshakti.gov.in/JJM/JJM/Public/Profile/VillageProfile.aspx")
+    driver.get("https://ejalshakti.gov.in/JJM/JJM/Public/Profile/VillageProfile.aspx")
     sleep(5)
     driver.maximize_window()
 
@@ -224,5 +207,5 @@ def recur_scrape(current_dir):
 
 
 if __name__ == '__main__':
-    current_dir = fr'{WORKING_DIR}\{STATE_NAME}'
+    current_dir = os.path.join(WORKING_DIR, STATE_NAME)
     recur_scrape(current_dir)
