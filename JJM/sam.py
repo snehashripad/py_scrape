@@ -20,15 +20,15 @@ def profile_selector(driver):
     dist_options = driver.find_elements(By.XPATH, '//*[@id="CPHPage_ddDistrict"]/option')[1:]
     for i in range(len(dist_options)):
         dist_options = driver.find_elements(By.XPATH, '//*[@id="CPHPage_ddDistrict"]/option')[1:]
-        dist_name = sanitize_filename(dist_options[i].text)
-        dist_options[i].click()
+        dist_name = sanitize_filename(dist_options[2].text)
+        dist_options[2].click()
 
         time.sleep(5)
 
         # Loop through each block within the district
         block_options = driver.find_elements(By.XPATH, '//*[@id="CPHPage_ddBlock"]/option')[1:]
         for j in range(len(block_options)):
-            block_options = driver.find_elements(By.XPATH, '//*[@id="CPHPage_ddBlock"]/option')[1:]
+            block_options = driver.find_elements(By.XPATH, '//*[@id="CPHPage_ddBlock"]/option')[4:]
             block_text = sanitize_filename(block_options[j].text)
             block_options[j].click()
             time.sleep(5)
